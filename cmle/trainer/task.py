@@ -1,20 +1,18 @@
-"""Copyright 2017 Google Inc.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-"""
+# Copyright 2017 Google Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import json
-import os
 import random
 import time
 import bow_model
@@ -82,13 +80,13 @@ def get_batches(data, batch_size):
 
 def main(_):
     """Starts the main training loop and later does predictions."""
-    job_dir = os.path.join(FLAGS.gcs_working_dir, 'v{}'.format(FLAGS.version))
-    data_dir = os.path.join(job_dir, 'data')
-    train_dir = os.path.join(job_dir, 'train')
+    job_dir = '{}/v{}'.format(FLAGS.gcs_working_dir,FLAGS.version)
+    data_dir = '{}/data'.format(job_dir)
+    train_dir = '{}/train'.format(job_dir)
 
-    train_data = read_data(os.path.join(data_dir, TRAIN_FILE_NAME))
-    eval_data = read_data(os.path.join(data_dir, EVAL_FILE_NAME))
-    predict_data = read_data(os.path.join(data_dir, TEST_FILE_NAME))
+    train_data = read_data('{}/{}'.format(data_dir, TRAIN_FILE_NAME))
+    eval_data = read_data('{}/{}'.format(data_dir, EVAL_FILE_NAME))
+    predict_data = read_data('{}/{}'.format(data_dir, TEST_FILE_NAME))
 
     train_loss_ph = tf.placeholder(tf.float32, name='train_loss')
     eval_loss_ph = tf.placeholder(tf.float32, name='eval_loss')
@@ -96,7 +94,7 @@ def main(_):
     tf.summary.scalar('eval_loss', eval_loss_ph)
     summary_op = tf.summary.merge_all()
 
-    with file_io.FileIO(os.path.join(data_dir, PARAMS_FILE_NAME), 'r') as f:
+    with file_io.FileIO('{}/{}'.format(data_dir, PARAMS_FILE_NAME), 'r') as f:
         params = json.load(f)
     batch_size = params['batch_size']
 
@@ -136,9 +134,7 @@ def main(_):
                                                 epoch_time, train_loss,
                                                 eval_loss))
                 # Save checkpoint
-                checkpoint_path = os.path.join(
-                    train_dir,
-                    'doc_classifier_{}.ckpt'.format(FLAGS.model_name))
+                checkpoint_path = '{}/doc_classifier_{}.ckpt'.format(train_dir, FLAGS.model_name)
                 model.saver.save(
                     sess, checkpoint_path, global_step=model.global_step)
                 summary = sess.run(
@@ -153,10 +149,10 @@ def main(_):
                 epoch_time, train_loss, eval_loss = 0.0, 0.0, 0.0  # Reset
 
         # Write all the prediction results into a .csv
-        with file_io.FileIO(os.path.join(data_dir, RESULT_FILE_NAME),
+        with file_io.FileIO('{}/{}'.format(data_dir, RESULT_FILE_NAME),
                             'w+') as f:
             csv_writer = csv.writer(f)
-            csv_writer.writerow(['row_id', 'label_id', 'type'] + [
+            csv_writer.writerow(['row_id', 'type'] + [
                 'score_{}'.format(i) for i in xrange(params['num_labels'])
             ])
 
@@ -168,8 +164,8 @@ def main(_):
                     input_feed = model.prepare_batch(batch_data)
                     scores.extend(model.predict_step(sess, input_feed))
                 # Format the data and write to the file
-                for ((_, label, row_id), score) in zip(data, scores):
-                    result_list.append([row_id, label, row_type] + list(score))
+                for ((_, _, row_id), score) in zip(data, scores):
+                    result_list.append([row_id, row_type] + list(score))
                 if result_list:
                     csv_writer.writerows(result_list)
 

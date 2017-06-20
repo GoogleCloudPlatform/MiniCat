@@ -1,17 +1,16 @@
-"""Copyright 2017 Google Inc.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-"""
+# Copyright 2017 Google Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import collections
 import csv
@@ -63,8 +62,7 @@ def _submit_train_job(gcs_working_dir, version, params, region):
     sandbox.run_setup('setup.py', ['-q', 'sdist'])
     shutil.rmtree('trainer.egg-info')  # Cleanup the directory not needed
     # Copy package to GCS package path
-    package_path = os.path.join(
-        os.path.join(gcs_working_dir, 'packages'), PACKAGE_NAME)
+    package_path = '{}/packages/{}'.format(gcs_working_dir, PACKAGE_NAME)
     _copy_to_gcs(os.path.join('dist', PACKAGE_NAME), package_path)
 
     trainer_flags = [
@@ -91,21 +89,18 @@ def _submit_train_job(gcs_working_dir, version, params, region):
     cloudml = discovery.build('ml', 'v1')
     request = cloudml.projects().jobs().create(body=job_spec,
                                                parent=project_id)
-    # TODO(ysonthal): Figure out a way to display the message
     try:
         response = request.execute()
-        print(response)
     except errors.HttpError, err:
         print('There was an error creating the training job.'
               'Check the details:')
         print(err._get_reason())
         sys.exit(1)
-    return jobid
+    return project_name, jobid
 
 
 def _build_parameters(statistics, gcs_data_dir):
     """Generate model params based on the stats generated from the data-set."""
-    # TODO(ysonthal) : Decide params value based on the data.
     # Parameters for the trainer
     params = {
         'learning_rate': 0.01,
@@ -139,7 +134,7 @@ def _write_vocabulary(vocab_counter, vocab_size, destination):
     # Write the top_words to destination (line by line fashion)
     with file_io.FileIO(destination, 'w+') as f:
         for word in vocab_list:
-            f.write('{} {} \n'.format(word[0], word[1]))
+            f.write(u'{} {} \n'.format(word[0], word[1]))
     # Create a rev_vocab dictionary that returns the index of each word
     return dict([(word, i)
                  for (i, (word, word_count)) in enumerate(vocab_list)])
@@ -173,7 +168,7 @@ def _build_dataset(data_csv_file, gcs_data_dir, vocab_size):
                 continue
             label = row[labeller.LABELS_INDEX]
 
-            document = language_client.document_from_text(text)
+            document = language_client.document_from_text(text, language='en')
             tokens = document.analyze_syntax().tokens
             word_tokens = [token.lemma for token in tokens]
             vocab_counter.update(word_tokens)
@@ -189,15 +184,15 @@ def _build_dataset(data_csv_file, gcs_data_dir, vocab_size):
 
     # Write to a .txt file (destination = gcs_data_dir/)
     vocab_index = _write_vocabulary(
-        vocab_counter, vocab_size, os.path.join(gcs_data_dir,
-                                                VOCAB_FILE_NAME))
+        vocab_counter, vocab_size, '{}/{}'.format(gcs_data_dir,
+                                                  VOCAB_FILE_NAME))
 
     # Build labels mapping of label_name to labels_id
     labels_index = {label_name: i
                     for i, label_name in enumerate(list(labels_counter))}
 
     # Write rows into tfrecords files
-    destinations = [os.path.join(gcs_data_dir, file_name)
+    destinations = ['{}/{}'.format(gcs_data_dir, file_name)
                     for file_name in [TRAIN_FILE_NAME, EVAL_FILE_NAME,
                                       TEST_FILE_NAME]]
 
@@ -234,7 +229,7 @@ def _build_dataset(data_csv_file, gcs_data_dir, vocab_size):
             else:
                 write_tf_record(test_writer, row['row_id'], token_ids)
 
-    statistics['vocab_size'] = len(vocab_counter)
+    statistics['vocab_size'] = len(vocab_index)
     statistics['labels_counter'] = labels_counter
     statistics['num_labels'] = len(labels_counter)
     return statistics
@@ -244,8 +239,7 @@ def _prepare_data(version, vocab_size, local_working_dir, gcs_working_dir):
     """Main module to prepare the data for training."""
 
     data_dir = os.path.join(local_working_dir, 'v{}'.format(version))
-    gcs_data_dir = os.path.join(
-        os.path.join(gcs_working_dir, 'v{}'.format(version), 'data'))
+    gcs_data_dir = '{}/v{}/data'.format(gcs_working_dir,version)
     data_csv_file = os.path.join(data_dir, labeller.LABELS_CSV_FILE_NAME)
 
     # Build vocabulary and train,eval,test datasets
@@ -266,7 +260,9 @@ def run(version, local_working_dir, vocab_size, gcs_working_dir, region):
 
     print('Submitting training job to Google Cloud ML Engine')
     # Run the submit_train_job to submit a training job on GCP.
-    jobid = _submit_train_job(gcs_working_dir, version, params, region)
+    project_name, jobid = _submit_train_job(gcs_working_dir, version, params,
+                                            region)
 
     # Build evaluation results using the summary file in the model train dir.
-    evaluator.run(local_working_dir, gcs_working_dir, version, jobid)
+    evaluator.run(local_working_dir, gcs_working_dir, version, project_name,
+                  jobid, params['labels_counter'])
