@@ -118,8 +118,8 @@ Create a spreadsheet similar to :
 --- | ------------------ | ---- | -----------
 1   | ~/emails/file1.txt |      | Important
 2   | ~/emails/file2.txt |      | Unimportant
-4   | ~/emails/file3.txt |      |
-3   | ~/emails/file4.txt |      | Important
+3   | ~/emails/file3.txt |      |
+4   | ~/emails/file4.txt |      | Important
 
 .  
 .
@@ -133,8 +133,8 @@ The spreadsheet can also be in this format :
 --- | --------- | ------------------------------------ | -----------
 1   |           | You just won a prize for $5000 ...   | Unimportant
 2   |           | Your friends Alice tagged you in ... | Important
-4   |           | Call #0000 and get a free Iphone ... |
-3   |           | Signup today for holiday packages... | Important
+3   |           | Call #0000 and get a free Iphone ... |
+4   |           | Signup today for holiday packages... | Important
 
 .  
 .
