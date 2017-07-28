@@ -114,7 +114,7 @@ from gmail into a mailbox file. Then post-process into the following csv format.
 
 Create a spreadsheet similar to :
 
--   | file_path          | text | labels
+.   | file_path          | text | labels
 --- | ------------------ | ---- | -----------
 1   | ~/emails/file1.txt |      | Important
 2   | ~/emails/file2.txt |      | Unimportant
@@ -129,7 +129,7 @@ can be used to partially label the set of emails.
 
 The spreadsheet can also be in this format :
 
--   | file_path | text                                 | labels
+.   | file_path | text                                 | labels
 --- | --------- | ------------------------------------ | -----------
 1   |           | You just won a prize for $5000 ...   | Unimportant
 2   |           | Your friends Alice tagged you in ... | Important
@@ -277,3 +277,4 @@ This is not an official Google product.
 [billing]: https://support.google.com/cloud/answer/6293499#enable-billing
 [setup-cred]: https://cloud.google.com/natural-language/docs/getting-started
 [create-gcs]: https://cloud.google.com/storage/docs/creating-buckets
+
