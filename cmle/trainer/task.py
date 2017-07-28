@@ -15,7 +15,7 @@
 import json
 import random
 import time
-import bow_model
+import cnn_model
 import tensorflow as tf
 import csv
 from tensorflow.python.lib.io import file_io
@@ -23,9 +23,9 @@ from tensorflow.python.lib.io import file_io
 # Basic model parameters as external flags.
 flags = tf.app.flags
 FLAGS = flags.FLAGS
-flags.DEFINE_integer('num_epochs', 10, 'Number of epochs to run trainer.')
+flags.DEFINE_integer('num_epochs', 100, 'Number of epochs to run trainer.')
 flags.DEFINE_integer('epochs_per_checkpoint', 1, 'Checkpoint Frequency')
-flags.DEFINE_string('model_name', 'bow_model', 'Model to use for training')
+flags.DEFINE_string('model_name', 'cnn_model', 'Model to use for training')
 flags.DEFINE_string('gcs_working_dir', None,
                     'The GCS path where all the data versions are stored')
 flags.DEFINE_string('version', None,
@@ -48,15 +48,18 @@ def read_data(filepath):
         tokens = example.features.feature['token_ids'].bytes_list.value[0]
         label = example.features.feature['label'].bytes_list.value[0]
         row_id = example.features.feature['row_id'].bytes_list.value[0]
-        data.append([tokens.split(' '), label, row_id])
+        pos = example.features.feature['pos_ids'].bytes_list.value[0]
+        sentiment = example.features.feature['sentiment'].bytes_list.value[0]
+        data.append([tokens.split(' '), label, row_id, pos.split(' '),
+                     sentiment.split(' ')])
     return data
 
 
-def create_and_initialize_model(session, params, train_dir):
+def create_and_initialize_model(session, params, train_dir, data_dir):
     """Initializes a model and returns the object of the model class."""
     model = None
-    if FLAGS.model_name == 'bow_model':
-        model = bow_model.SimpleBowModel(params)
+    if FLAGS.model_name == 'cnn_model':
+        model = cnn_model.CNNModel(params)
     else:
         raise ValueError('Invalid model {}'.format(FLAGS.model_name))
 
@@ -68,6 +71,8 @@ def create_and_initialize_model(session, params, train_dir):
     else:
         print('Created model with fresh parameters.')
         session.run(tf.global_variables_initializer())
+        # Assign embeddings from the pre-trained embeddings
+        session.run(tf.assign(model.word_embedding_table, get_embeds(data_dir)))
     return model
 
 
@@ -78,9 +83,20 @@ def get_batches(data, batch_size):
         yield data[i:i + batch_size]
 
 
+def get_embeds(data_dir):
+    embed_file = '{}/{}'.format(data_dir, 'embeddings.csv')
+    embeddings = []
+    with file_io.FileIO(embed_file, 'r') as f:
+        for line in f.readlines():
+            row = line.split(',')
+            embeddings.append([float(x) for x in row])
+    embeddings.append([0.] * len(embeddings[0]))  # Embedding for pads
+    return embeddings
+
+
 def main(_):
     """Starts the main training loop and later does predictions."""
-    job_dir = '{}/v{}'.format(FLAGS.gcs_working_dir,FLAGS.version)
+    job_dir = '{}/v{}'.format(FLAGS.gcs_working_dir, FLAGS.version)
     data_dir = '{}/data'.format(job_dir)
     train_dir = '{}/train'.format(job_dir)
 
@@ -89,19 +105,24 @@ def main(_):
     predict_data = read_data('{}/{}'.format(data_dir, TEST_FILE_NAME))
 
     train_loss_ph = tf.placeholder(tf.float32, name='train_loss')
+    train_acc_ph = tf.placeholder(tf.float32, name='train_acc')
     eval_loss_ph = tf.placeholder(tf.float32, name='eval_loss')
+    eval_acc_ph = tf.placeholder(tf.float32, name='eval_acc')
     tf.summary.scalar('train_loss', train_loss_ph)
+    tf.summary.scalar('train_acc', train_acc_ph)
     tf.summary.scalar('eval_loss', eval_loss_ph)
+    tf.summary.scalar('eval_acc', eval_acc_ph)
     summary_op = tf.summary.merge_all()
 
     with file_io.FileIO('{}/{}'.format(data_dir, PARAMS_FILE_NAME), 'r') as f:
         params = json.load(f)
     batch_size = params['batch_size']
 
-    current_epoch, epoch_time, train_loss, eval_loss = 0., 0., 0., 0.
+    current_epoch, epoch_time = 0., 0.
+    train_loss, train_acc, eval_loss, eval_acc = 0., 0., 0., 0.
+    previous_losses = []
     with tf.Session() as sess:
-        model = create_and_initialize_model(sess, params, train_dir)
-
+        model = create_and_initialize_model(sess, params, train_dir, data_dir)
         # Create a summary writer and write the default graph to it
         writer = tf.summary.FileWriter(train_dir, graph=tf.get_default_graph())
         writer.add_graph(tf.get_default_graph(), model.global_step.eval())
@@ -111,42 +132,59 @@ def main(_):
             # Run one epoch of training on batch data
             for batch_data in get_batches(train_data, batch_size):
                 input_feed = model.prepare_batch(batch_data)
-                step_loss = model.train_step(sess, input_feed)
+                step_loss, acc = model.train_step(sess, input_feed)
                 train_loss += step_loss
+                train_acc += acc
 
             if current_epoch % FLAGS.epochs_per_checkpoint == 0:
                 # Average out loss and time for a single epoch
                 train_loss /= (((len(train_data) / batch_size) + 1) *
                                FLAGS.epochs_per_checkpoint)
+                train_acc /= len(train_data)
                 epoch_time = (
                     time.time() - start_time) / FLAGS.epochs_per_checkpoint
 
                 # Do an evaluation step
                 for batch_data in get_batches(eval_data, batch_size):
                     input_feed = model.prepare_batch(batch_data)
-                    step_loss = model.eval_step(sess, input_feed)
+                    step_loss, acc = model.eval_step(sess, input_feed)
                     eval_loss += step_loss
+                    eval_acc += acc
                 eval_loss /= (len(eval_data) / batch_size) + 1
+                eval_acc /= len(eval_data)
+
+                # Learning rate decay
+                if (len(previous_losses) > 2 and
+                        eval_loss > max(previous_losses[-3:])):
+                    sess.run(model.learning_rate_decay_op)
+                previous_losses.append(eval_loss)
 
                 # Print statistics for the previous epoch.
                 print('Global step {} epoch-time {} Train Loss {:.4f} '
-                      'Eval Loss {:.4f}'.format(model.global_step.eval(),
-                                                epoch_time, train_loss,
-                                                eval_loss))
+                      'Eval Loss {:.4f} Train acc {:.4f} Eval acc {:.4f} '
+                      'learning rate {:.6f}'.format(
+                          model.global_step.eval(), epoch_time, train_loss,
+                          eval_loss, train_acc, eval_acc,
+                          model.learning_rate.eval()))
+
                 # Save checkpoint
-                checkpoint_path = '{}/doc_classifier_{}.ckpt'.format(train_dir, FLAGS.model_name)
+                checkpoint_path = '{}/doc_classifier_{}.ckpt'.format(
+                    train_dir, FLAGS.model_name)
                 model.saver.save(
                     sess, checkpoint_path, global_step=model.global_step)
                 summary = sess.run(
                     summary_op,
                     feed_dict={
                         train_loss_ph: train_loss,
-                        eval_loss_ph: eval_loss
+                        train_acc_ph: train_acc,
+                        eval_loss_ph: eval_loss,
+                        eval_acc_ph: eval_acc
                     })
-                # Add loss values to the summaries
+                # Add loss and accuracy values to the summaries
                 writer.add_summary(summary, model.global_step.eval())
                 writer.flush()
                 epoch_time, train_loss, eval_loss = 0.0, 0.0, 0.0  # Reset
+                train_acc, eval_acc = 0., 0.
 
         # Write all the prediction results into a .csv
         with file_io.FileIO('{}/{}'.format(data_dir, RESULT_FILE_NAME),
@@ -164,7 +202,7 @@ def main(_):
                     input_feed = model.prepare_batch(batch_data)
                     scores.extend(model.predict_step(sess, input_feed))
                 # Format the data and write to the file
-                for ((_, _, row_id), score) in zip(data, scores):
+                for ((_, _, row_id, _, _), score) in zip(data, scores):
                     result_list.append([row_id, row_type] + list(score))
                 if result_list:
                     csv_writer.writerows(result_list)

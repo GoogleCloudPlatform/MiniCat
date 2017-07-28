@@ -45,8 +45,8 @@ def _add_labels(labels):
         print(label)
     inp = ''
     while True:
-        inp = raw_input('Enter a new label or enter \'q\' to quit : ')
-        if inp == 'q':
+        inp = raw_input('Enter a new label or enter \'d\' for done : ')
+        if inp == 'd':
             break
         elif inp not in labels:
             labels.append(inp)
@@ -55,14 +55,17 @@ def _add_labels(labels):
 
 def _get_label_id(text, labels):
     """Displays the text and takes label as input from the user."""
-    _clear_screen()
+    inp = ''
+    # print in a tabular format  i  labels[i]
+    while not inp:
+        _clear_screen()
+        print('Id \t Label')
+        for i, label in enumerate(labels):
+            print('{} \t {}'.format(i, label))
+        print('{}\n\n'.format(text))
+        inp = raw_input("Enter the Label id ('d' for done, 's' to skip) : ")
 
-    # print it in a tabular format  i  labels[i]
-    print('Id \t Label')
-    for i, label in enumerate(labels):
-        print('{} \t {}'.format(i, label))
-    print('{}\n\n'.format(text))
-    return raw_input("Enter the Label id ('q' to quit) : ")
+    return inp
 
 
 def extract_relevant_columns(csv_file_path):
@@ -114,13 +117,14 @@ def run(csv_file_path, version, local_working_dir):
             if not text:
                 with open(row[FILE_PATH_INDEX], 'rb') as f:
                     text = f.read()
-            else:
+            if not text:
                 print('Invalid row {} in file {}'.format(i + 1, csv_file_path))
                 sys.exit(1)
             # Run the get_label function for each unlabeled data
             inp = _get_label_id(text, labels_list)
-            if inp == 'q':
+            if inp == 'd':
                 break
-            row[LABELS_INDEX] = labels_list[int(inp)]
+            elif inp != 's':
+                row[LABELS_INDEX] = labels_list[int(inp)]
 
     create_new_csv(data_set, local_working_dir, version)

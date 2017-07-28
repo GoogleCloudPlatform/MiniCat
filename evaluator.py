@@ -96,9 +96,14 @@ def run(local_working_dir, gcs_working_dir, version, project_name, job_id,
     print('\nJob URL : https://console.cloud.google.com/mlengine/jobs/'
           '{}?project={}\n'.format(job_id, project_name))
 
-    # Create a get job object request to the client library
+    # Print some status message and tensorboard command to view job progress
     print('Waiting for the job to be finished. Please wait...\n')
-    cloudml = discovery.build('ml', 'v1')
+
+    print('Run the following command to view the training on tensorboard')
+    print('tensorboard --logdir={}/v{}/train/'.format(gcs_working_dir, version))
+
+    # Create a get job object request to the client library
+    cloudml = discovery.build('ml', 'v1',  cache_discovery=False)
     request = cloudml.projects().jobs().get(name='projects/{}/jobs/{}'.format(
         project_name, job_id))
     response = request.execute()
@@ -109,7 +114,7 @@ def run(local_working_dir, gcs_working_dir, version, project_name, job_id,
         response = request.execute()
 
     if response['state'] == 'SUCCEEDED':
-        gcs_data_dir = '{}/v{}/data'.format(gcs_working_dir,version)
+        gcs_data_dir = '{}/v{}/data'.format(gcs_working_dir, version)
         local_data_dir = os.path.join(local_working_dir, 'v{}'.format(version))
         labels = list(labels_counter)
 
@@ -125,7 +130,7 @@ def run(local_working_dir, gcs_working_dir, version, project_name, job_id,
         train_frame, eval_frame = process_predictions(
             local_data_dir, input_frame, prediction_frame, labels)
 
-        print('Statistics on training data')
+        print('\nStatistics on training data')
         print_stats(train_frame, labels)
         print('Statistics on evaluation data')
         print_stats(eval_frame, labels)

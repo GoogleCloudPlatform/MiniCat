@@ -45,6 +45,7 @@ if __name__ == '__main__':
 
     parser_labeller.add_argument(
         '--data_csv_file',
+        required=True,
         default=None,
         help=('.csv file containing columns with column_headers as :- \n'
               'file_path -> path of the file where the text should be read\n'
@@ -54,9 +55,9 @@ if __name__ == '__main__':
     for p in [parser_labeller, parser_trainer]:
         p.add_argument(
             '--local_working_dir',
+            required=True,
             default=None,
-            help='Local path to save the data versions and evaluation results',
-            required=True)
+            help='Local path to save the data versions and evaluation results')
 
     # Add arguments specific to training sub-command
     parser_trainer.add_argument(
@@ -65,11 +66,19 @@ if __name__ == '__main__':
         help='Data version to be used for training.')
     parser_trainer.add_argument(
         '--gcs_working_dir',
+        required=True,
         default=None,
         help='GCS storage bucket path where data and models would be stored')
     parser_trainer.add_argument(
+        '--scale_tier',
+        action='store_const',
+        const='BASIC_GPU',
+        help=('The training on Ml Engine will use BASIC_GPU scale_tier. \n'
+              'Refer the GCP ML-Engine documentation for more info'))
+    parser_trainer.add_argument(
         '--vocab_size',
         default=20000,
+        type=int,
         help='Vocabulary Size to create the data records')
     parser_trainer.add_argument(
         '--region',
@@ -84,7 +93,8 @@ if __name__ == '__main__':
         labeller.run(args.data_csv_file, version, args.local_working_dir)
         print('\nNew version {} created\n'.format(version))
     elif args.mode == 'train':
+        args.gcs_working_dir = args.gcs_working_dir.rstrip('/')
         if args.version:
             version = args.version
         trainer.run(version, args.local_working_dir, args.vocab_size,
-                    args.gcs_working_dir, args.region)
+                    args.gcs_working_dir, args.region, args.scale_tier)

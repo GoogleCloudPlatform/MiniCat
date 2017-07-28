@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Most simple package setup.
+# A simple package setup.
 from setuptools import find_packages
 from setuptools import setup
 
@@ -20,4 +20,8 @@ setup(
     name='trainer',
     packages=find_packages(),
     include_package_data=True,
-    description='Model trainer')
+    description='A simple neural network-based text categorization tool',
+    license='Apache',
+    url='https://github.com/GoogleCloudPlatform/MiniCat',
+    author='Yash Sonthalia',
+    author_email='ysonthal@google.com')

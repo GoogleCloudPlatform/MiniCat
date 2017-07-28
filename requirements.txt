@@ -1,0 +1,7 @@
+pandas==0.19.2
+google_api_python_client==1.6.2
+tensorflow==1.1.0
+google-cloud-storage==1.2.0
+google-cloud-language==0.25.0
+google-auth==1.0.1
+urllib3[secure]==1.21.1
